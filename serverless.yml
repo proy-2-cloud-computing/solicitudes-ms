@@ -1,0 +1,217 @@
+service: itsm-solicitudes
+
+frameworkVersion: '4'
+
+provider:
+  name: aws
+  runtime: python3.12
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  # AWS Academy: las Lambdas usan el rol existente del laboratorio.
+  # En una cuenta normal, elimina este bloque y usa iam.role.statements
+  # (ver el comentario al final del archivo).
+  iam:
+    role: arn:aws:iam::${aws:accountId}:role/LabRole
+  stackTags:
+    Proyecto: ITSM-Grupo6
+    Componente: solicitudes
+  environment:
+    TABLE: ${self:service}-${self:provider.stage}
+    # Outputs de itsm-base (stack itsm-base-dev)
+    TOPIC_ARN: ${cf:itsm-base-${self:provider.stage}.SolicitudesTopicArn}
+    BUCKET: ${cf:itsm-base-${self:provider.stage}.AdjuntosBucketName}
+    # El Catalogo aun no existe. Para la demo local:
+    #   CATALOGO_URL=http://localhost:8000 npx serverless deploy
+    # Cuando exista itsm-catalogo-dev, cámbialo por:
+    #   ${cf:itsm-catalogo-${self:provider.stage}.ApiUrl}
+    CATALOGO_URL: ${env:CATALOGO_URL, 'http://localhost:8000'}
+    CATALOGO_TIMEOUT: '5'
+    ADJUNTOS_EXPIRACION: '300'
+    MAX_ADJUNTO_MB: '10'
+    LOG_LEVEL: INFO
+
+package:
+  patterns:
+    - '!tests/**'
+    - '!scripts/**'
+    - '!docs/**'
+    - '!node_modules/**'
+    - '!.git/**'
+    - '!**/__pycache__/**'
+    - '!**/*.pyc'
+    - '!*.md'
+    - '!package.json'
+    - '!package-lock.json'
+    - '!requirements.txt'
+
+functions:
+  crear:
+    handler: src/handlers/crear.handler
+    description: Crea una solicitud consultando el Catalogo
+    events:
+      - http:
+          path: solicitudes
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuth
+            arn: ${cf:itsm-base-${self:provider.stage}.UserPoolArn}
+
+  listar:
+    handler: src/handlers/listar.handler
+    description: Lista solicitudes del tenant con paginacion
+    events:
+      - http:
+          path: solicitudes
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuth
+            arn: ${cf:itsm-base-${self:provider.stage}.UserPoolArn}
+
+  obtener:
+    handler: src/handlers/obtener.handler
+    description: Obtiene el detalle de una solicitud
+    events:
+      - http:
+          path: solicitudes/{id}
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuth
+            arn: ${cf:itsm-base-${self:provider.stage}.UserPoolArn}
+
+  cambiarEstado:
+    handler: src/handlers/cambiar_estado.handler
+    description: Cambia el estado y asigna responsable
+    events:
+      - http:
+          path: solicitudes/{id}/estado
+          method: put
+          cors: true
+          authorizer:
+            name: cognitoAuth
+            arn: ${cf:itsm-base-${self:provider.stage}.UserPoolArn}
+
+  adjuntos:
+    handler: src/handlers/adjuntos.handler
+    description: Firma URLs de S3 y confirma adjuntos
+    events:
+      - http:
+          path: solicitudes/{id}/adjuntos
+          method: post
+          cors: true
+          authorizer:
+            name: cognitoAuth
+            arn: ${cf:itsm-base-${self:provider.stage}.UserPoolArn}
+      - http:
+          path: solicitudes/{id}/adjuntos
+          method: put
+          cors: true
+          authorizer:
+            name: cognitoAuth
+            arn: ${cf:itsm-base-${self:provider.stage}.UserPoolArn}
+
+  historial:
+    handler: src/handlers/historial.handler
+    description: Lista el historial de estados de una solicitud
+    events:
+      - http:
+          path: solicitudes/{id}/historial
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuth
+            arn: ${cf:itsm-base-${self:provider.stage}.UserPoolArn}
+
+  resumen:
+    handler: src/handlers/resumen.handler
+    description: Contadores por estado para el dashboard
+    events:
+      - http:
+          path: solicitudes/resumen
+          method: get
+          cors: true
+          authorizer:
+            name: cognitoAuth
+            arn: ${cf:itsm-base-${self:provider.stage}.UserPoolArn}
+
+resources:
+  Resources:
+    SolicitudesTable:
+      Type: AWS::DynamoDB::Table
+      # Conserva los datos si se elimina el stack.
+      DeletionPolicy: Retain
+      UpdateReplacePolicy: Retain
+      Properties:
+        TableName: ${self:provider.environment.TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: tenant_id
+            AttributeType: S
+          - AttributeName: sk
+            AttributeType: S
+          - AttributeName: estado_fecha
+            AttributeType: S
+        KeySchema:
+          - AttributeName: tenant_id
+            KeyType: HASH
+          - AttributeName: sk
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: GSI1
+            KeySchema:
+              - AttributeName: tenant_id
+                KeyType: HASH
+              - AttributeName: estado_fecha
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        Tags:
+          - Key: Proyecto
+            Value: ITSM-Grupo6
+
+  Outputs:
+    ApiUrl:
+      Description: URL base del API de solicitudes
+      Value: !Sub 'https://${ApiGatewayRestApi}.execute-api.${AWS::Region}.amazonaws.com/${self:provider.stage}'
+      Export:
+        Name: !Sub 'itsm-${self:provider.stage}-SolicitudesApiUrl'
+
+    TableName:
+      Description: Nombre de la tabla DynamoDB
+      Value: !Ref SolicitudesTable
+      Export:
+        Name: !Sub 'itsm-${self:provider.stage}-SolicitudesTableName'
+
+    TableArn:
+      Description: ARN de la tabla DynamoDB
+      Value: !GetAtt SolicitudesTable.Arn
+      Export:
+        Name: !Sub 'itsm-${self:provider.stage}-SolicitudesTableArn'
+
+# ---------------------------------------------------------------------------
+# Permisos que necesita el rol de las Lambdas (si NO usas LabRole):
+#
+#   iam:
+#     role:
+#       statements:
+#         - Effect: Allow
+#           Action:
+#             - dynamodb:GetItem
+#             - dynamodb:PutItem
+#             - dynamodb:UpdateItem
+#             - dynamodb:Query
+#             - dynamodb:TransactWriteItems
+#           Resource:
+#             - !GetAtt SolicitudesTable.Arn
+#             - !Sub '${SolicitudesTable.Arn}/index/*'
+#         - Effect: Allow
+#           Action: sns:Publish
+#           Resource: ${self:provider.environment.TOPIC_ARN}
+#         - Effect: Allow
+#           Action:
+#             - s3:PutObject
+#             - s3:GetObject
+#           Resource: !Sub 'arn:aws:s3:::${self:provider.environment.BUCKET}/*'
+# ---------------------------------------------------------------------------

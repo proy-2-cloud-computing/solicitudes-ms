@@ -1,0 +1,19 @@
+{
+  "name": "itsm-solicitudes",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Microservicio de solicitudes de servicio de la plataforma ITSM",
+  "scripts": {
+    "deploy": "serverless deploy",
+    "deploy:dev": "serverless deploy --stage dev",
+    "remove": "serverless remove",
+    "info": "serverless info --verbose",
+    "print": "serverless print",
+    "test": "python3 -m unittest discover -s tests -v",
+    "mock:catalogo": "python3 scripts/mock_catalogo.py",
+    "seed": "python3 scripts/seed_solicitudes.py"
+  },
+  "devDependencies": {
+    "serverless": "^4.0.0"
+  }
+}

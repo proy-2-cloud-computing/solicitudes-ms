@@ -6,6 +6,11 @@
 >
 > Stack: **Python 3.12 + Serverless Framework v4 + API Gateway (REST) + Lambda +
 > DynamoDB + S3 + SNS**.
+>
+> **Estado (2026-11-08):** Fases 0–4 implementadas en este repositorio
+> (`serverless.yml`, 7 handlers, `common/`, tests, scripts y OpenAPI). La Fase 5
+> (deploy, seed de 30k y evidencias) queda pendiente de credenciales AWS. El
+> Catálogo está mockeado porque `itsm-catalogo-dev` aún no existe.
 
 ---
 
@@ -340,9 +345,10 @@ Respuesta:
 - Verifica primero que la solicitud exista y sea del tenant.
 - `key = {tenant_id}/solicitudes/{id_sin_hash}/{uuid4}-{nombre_saneado}`.
 - URL prefirmada `put_object`, 300 s, con `ContentType`.
-- **Decisión pendiente:** ¿se agrega la key a `adjuntos` al firmar o se agrega
-  con un `PUT` de confirmación después de subir? Recomendado: confirmar, para
-  no guardar claves de archivos que nunca se subieron.
+- **Confirmación implementada:** después de subir, el cliente hace
+  `PUT /solicitudes/{id}/adjuntos` con `{"key": "..."}`. La Lambda verifica con
+  `head_object` que el objeto exista y recién entonces lo agrega a `adjuntos`.
+  Así no se guardan claves de archivos que nunca se subieron.
 
 ### 4.6 Errores
 
@@ -680,19 +686,23 @@ S3, mensaje SNS y prueba 404 entre tenants.
 
 ---
 
-## 14. Decisiones a confirmar antes de codificar
+## 14. Decisiones tomadas
 
-1. **API type:** REST (`http`, recomendado por la guía) vs HTTP API (`httpApi`,
-   más barato). Afecta authorizer y forma de leer claims.
-2. **Estado inicial:** `en_aprobacion` cuando `requiere_aprobacion=true`
-   (recomendado) vs siempre `nueva`.
-3. **Quién aprueba:** ¿el paso `en_aprobacion → en_proceso` lo hace
-   `aprobador`/`admin`, o cualquier `agente`?
-4. **Adjuntos:** ¿confirmar la subida antes de agregar la key a `adjuntos`
-   (recomendado) o agregarla al firmar?
-5. **Un Lambda por endpoint** (recomendado, coincide con la guía) vs un
-   dispatcher único.
-6. **Nombres de outputs** de `itsm-base` y `itsm-catalogo` (los de §2.2).
+1. **API type:** REST (`http`) con authorizer de Cognito por ARN. Los claims se
+   leen de `event.requestContext.authorizer.claims`.
+2. **Estado inicial:** `en_aprobacion` cuando `requiere_aprobacion=true`; si no,
+   `nueva`.
+3. **Quién aprueba:** `en_aprobacion → en_proceso` lo hacen `aprobador` y
+   `admin`; `agente` no.
+4. **Adjuntos:** se confirma la subida (`PUT .../adjuntos` con la `key`) antes
+   de agregarla a `adjuntos`.
+5. **Un Lambda por endpoint**, más `historial` y `resumen` (7 funciones).
+6. **Catálogo:** aún no existe. `CATALOGO_URL` es una variable de entorno con
+   default `http://localhost:8000` y se usa `scripts/mock_catalogo.py`. Cuando
+   exista `itsm-catalogo-dev`, se cambia por su Output `ApiUrl`.
+7. **Outputs de `itsm-base`:** `UserPoolArn`, `UserPoolId`, `UserPoolClientId`,
+   `SolicitudesTopicArn`, `AdjuntosBucketName` (ya existen en el stack
+   desplegado).
 
 ---
 

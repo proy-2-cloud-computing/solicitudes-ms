@@ -1,0 +1,3 @@
+# Solo para scripts locales (seed, diagnóstico). Las Lambdas usan el runtime
+# de Python de AWS, que ya incluye boto3.
+boto3>=1.34

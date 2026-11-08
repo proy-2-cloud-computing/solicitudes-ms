@@ -1,0 +1,418 @@
+openapi: 3.0.3
+info:
+  title: ITSM Solicitudes API
+  version: 1.0.0
+  description: >
+    Microservicio de solicitudes de servicio. Todos los endpoints requieren un
+    ID token de Cognito. El tenant se obtiene del claim `custom:tenant_id`;
+    nunca se envía en el body ni en la ruta.
+servers:
+  - url: https://{apiId}.execute-api.us-east-1.amazonaws.com/dev
+    variables:
+      apiId:
+        default: reemplazar
+security:
+  - bearerAuth: []
+tags:
+  - name: Solicitudes
+  - name: Adjuntos
+paths:
+  /solicitudes:
+    get:
+      tags: [Solicitudes]
+      summary: Listar solicitudes del tenant
+      parameters:
+        - name: estado
+          in: query
+          schema:
+            $ref: '#/components/schemas/Estado'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+        - name: next
+          in: query
+          description: Token opaco devuelto por la página anterior
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Página de solicitudes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Solicitud'
+                  next:
+                    type: string
+                    nullable: true
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+    post:
+      tags: [Solicitudes]
+      summary: Crear una solicitud
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearSolicitud'
+      responses:
+        '201':
+          description: Solicitud creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Solicitud'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '503':
+          $ref: '#/components/responses/Error'
+
+  /solicitudes/resumen:
+    get:
+      tags: [Solicitudes]
+      summary: Contadores por estado
+      responses:
+        '200':
+          description: Resumen del tenant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant_id:
+                    type: string
+                  total:
+                    type: integer
+                  por_estado:
+                    type: object
+                    additionalProperties:
+                      type: integer
+        '401':
+          $ref: '#/components/responses/Error'
+
+  /solicitudes/{id}:
+    get:
+      tags: [Solicitudes]
+      summary: Detalle de una solicitud
+      parameters:
+        - $ref: '#/components/parameters/SolicitudId'
+      responses:
+        '200':
+          description: Solicitud
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Solicitud'
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+
+  /solicitudes/{id}/estado:
+    put:
+      tags: [Solicitudes]
+      summary: Cambiar estado y asignar responsable
+      parameters:
+        - $ref: '#/components/parameters/SolicitudId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambiarEstado'
+      responses:
+        '200':
+          description: Solicitud actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Solicitud'
+        '400':
+          $ref: '#/components/responses/Error'
+        '401':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+
+  /solicitudes/{id}/adjuntos:
+    post:
+      tags: [Adjuntos]
+      summary: Firmar URL para subir un adjunto
+      parameters:
+        - $ref: '#/components/parameters/SolicitudId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nombre_archivo]
+              properties:
+                nombre_archivo:
+                  type: string
+                  maxLength: 200
+                content_type:
+                  type: string
+                  default: application/octet-stream
+      responses:
+        '200':
+          description: URL prefirmada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  upload_url:
+                    type: string
+                    format: uri
+                  key:
+                    type: string
+                  expires_in:
+                    type: integer
+                  metodo:
+                    type: string
+                    enum: [PUT]
+                  content_type:
+                    type: string
+                  max_bytes:
+                    type: integer
+                    description: Limite recomendado de tamano del archivo
+                  solicitud_id:
+                    type: string
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+    put:
+      tags: [Adjuntos]
+      summary: Confirmar que el objeto se subió y guardarlo
+      parameters:
+        - $ref: '#/components/parameters/SolicitudId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key:
+                  type: string
+      responses:
+        '200':
+          description: Solicitud con el adjunto confirmado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Solicitud'
+        '400':
+          $ref: '#/components/responses/Error'
+        '403':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+
+  /solicitudes/{id}/historial:
+    get:
+      tags: [Solicitudes]
+      summary: Historial de cambios de estado
+      parameters:
+        - $ref: '#/components/parameters/SolicitudId'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - name: next
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Historial
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  solicitud_id:
+                    type: string
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Historial'
+                  next:
+                    type: string
+                    nullable: true
+        '401':
+          $ref: '#/components/responses/Error'
+        '404':
+          $ref: '#/components/responses/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: ID token de Cognito (incluye custom:tenant_id)
+
+  parameters:
+    SolicitudId:
+      name: id
+      in: path
+      required: true
+      description: ID de la solicitud URL-encoded, por ejemplo REQ%23000870
+      schema:
+        type: string
+        example: REQ%23000870
+
+  responses:
+    Error:
+      description: Error de negocio
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Estado:
+      type: string
+      enum: [nueva, en_aprobacion, en_proceso, completada, cancelada]
+
+    Prioridad:
+      type: string
+      enum: [bajo, medio, alto, critico]
+
+    CrearSolicitud:
+      type: object
+      required: [servicio_id, titulo]
+      properties:
+        servicio_id:
+          type: string
+          example: SVC#000012
+        titulo:
+          type: string
+          minLength: 3
+          maxLength: 200
+        descripcion:
+          type: string
+          maxLength: 2000
+        prioridad:
+          $ref: '#/components/schemas/Prioridad'
+
+    CambiarEstado:
+      type: object
+      required: [estado]
+      properties:
+        estado:
+          $ref: '#/components/schemas/Estado'
+        asignado_a:
+          type: string
+          maxLength: 100
+        comentario:
+          type: string
+          maxLength: 500
+
+    Solicitud:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+        solicitud_id:
+          type: string
+          example: REQ#000870
+        servicio_id:
+          type: string
+        titulo:
+          type: string
+        descripcion:
+          type: string
+        solicitante_id:
+          type: string
+        asignado_a:
+          type: string
+        estado:
+          $ref: '#/components/schemas/Estado'
+        prioridad:
+          $ref: '#/components/schemas/Prioridad'
+        requiere_aprobacion:
+          type: boolean
+        nombre_servicio:
+          type: string
+        sla_horas:
+          type: integer
+        sla_vence_en:
+          type: string
+          format: date-time
+        sla_vencido:
+          type: boolean
+        adjuntos:
+          type: array
+          items:
+            type: string
+        creado_en:
+          type: string
+          format: date-time
+        actualizado_en:
+          type: string
+          format: date-time
+
+    Historial:
+      type: object
+      properties:
+        historial_id:
+          type: string
+        solicitud_id:
+          type: string
+        estado_anterior:
+          type: string
+        estado_nuevo:
+          type: string
+        actor_id:
+          type: string
+        comentario:
+          type: string
+        evento_id:
+          type: string
+        fecha:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            detalle:
+              type: string
+              nullable: true

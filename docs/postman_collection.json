@@ -1,0 +1,323 @@
+{
+  "info": {
+    "name": "ITSM Solicitudes",
+    "description": "Coleccion de pruebas del microservicio itsm-solicitudes. Configura baseUrl e idToken en las variables de la coleccion.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://REEMPLAZAR.execute-api.us-east-1.amazonaws.com/dev"
+    },
+    {
+      "key": "idToken",
+      "value": ""
+    },
+    {
+      "key": "otroTenantToken",
+      "value": ""
+    },
+    {
+      "key": "solicitudId",
+      "value": "REQ#000001"
+    },
+    {
+      "key": "adjuntoKey",
+      "value": ""
+    },
+    {
+      "key": "solicitudIdEnc",
+      "value": "REQ%23000001"
+    }
+  ],
+  "item": [
+    {
+      "name": "Crear solicitud",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('201 creado', () => pm.response.to.have.status(201));",
+              "const data = pm.response.json();",
+              "pm.test('trae solicitud_id', () => pm.expect(data.solicitud_id).to.match(/^REQ#/));",
+              "pm.test('trae tenant del token', () => pm.expect(data.tenant_id).to.be.a('string'));",
+              "pm.test('calcula SLA', () => pm.expect(data.sla_vence_en).to.be.a('string'));",
+              "pm.collectionVariables.set('solicitudId', data.solicitud_id);",
+              "pm.collectionVariables.set('solicitudIdEnc', encodeURIComponent(data.solicitud_id));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{idToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/solicitudes",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"servicio_id\": \"SVC#000001\",\n  \"titulo\": \"Acceso VPN para nuevo analista\",\n  \"descripcion\": \"Alta de acceso remoto\",\n  \"prioridad\": \"medio\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Listar solicitudes",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.test('items es arreglo', () => pm.expect(data.items).to.be.an('array'));",
+              "pm.test('next existe o es null', () => pm.expect(data).to.have.property('next'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{idToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/solicitudes?limit=25"
+      }
+    },
+    {
+      "name": "Listar por estado",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "data.items.forEach(i => pm.expect(i.estado).to.eql('en_proceso'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{idToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/solicitudes?estado=en_proceso&limit=10"
+      }
+    },
+    {
+      "name": "Detalle",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.test('mismo id', () => pm.expect(data.solicitud_id).to.eql(pm.collectionVariables.get('solicitudId')));",
+              "pm.test('sla_vencido booleano', () => pm.expect(data.sla_vencido).to.be.a('boolean'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{idToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/solicitudes/{{solicitudIdEnc}}"
+      }
+    },
+    {
+      "name": "Cambiar estado",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.test('estado actualizado', () => pm.expect(data.estado).to.eql('en_proceso'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{idToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/solicitudes/{{solicitudIdEnc}}/estado",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"estado\": \"en_proceso\",\n  \"asignado_a\": \"u-90de\",\n  \"comentario\": \"Asignado a redes\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Historial",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.test('items es arreglo', () => pm.expect(data.items).to.be.an('array'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{idToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/solicitudes/{{solicitudIdEnc}}/historial"
+      }
+    },
+    {
+      "name": "Resumen",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.test('total numerico', () => pm.expect(data.total).to.be.a('number'));",
+              "pm.test('por_estado objeto', () => pm.expect(data.por_estado).to.be.an('object'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{idToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/solicitudes/resumen"
+      }
+    },
+    {
+      "name": "Firmar adjunto",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.test('trae upload_url', () => pm.expect(data.upload_url).to.be.a('string'));",
+              "pm.collectionVariables.set('adjuntoKey', data.key);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{idToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/solicitudes/{{solicitudIdEnc}}/adjuntos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"nombre_archivo\": \"vpn.pdf\",\n  \"content_type\": \"application/pdf\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Confirmar adjunto",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));",
+              "const data = pm.response.json();",
+              "pm.test('adjunto guardado', () => pm.expect(data.adjuntos).to.include(pm.collectionVariables.get('adjuntoKey')));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{idToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/solicitudes/{{solicitudIdEnc}}/adjuntos",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"key\": \"{{adjuntoKey}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Aislamiento: otro tenant debe dar 404",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('404 para otro tenant', () => pm.response.to.have.status(404));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "{{otroTenantToken}}"
+          }
+        ],
+        "url": "{{baseUrl}}/solicitudes/{{solicitudIdEnc}}"
+      }
+    }
+  ]
+}
