@@ -111,6 +111,27 @@ class DbMotoTest(unittest.TestCase):
         self.assertEqual(error.exception.status, 409)
 
 
+class ContarPaginadoTest(unittest.TestCase):
+    def test_suma_todas_las_paginas_del_count(self):
+        from unittest import mock
+
+        from src.common import db
+
+        paginas = [
+            {"Count": 2500, "LastEvaluatedKey": {"sk": "REQ#002500"}},
+            {"Count": 2500, "LastEvaluatedKey": {"sk": "REQ#005000"}},
+            {"Count": 1000},
+        ]
+        tabla_falsa = mock.Mock()
+        tabla_falsa.query.side_effect = lambda **kw: paginas[len(tabla_falsa.query.call_args_list) - 1]
+        with mock.patch.object(db, "tabla", return_value=tabla_falsa):
+            self.assertEqual(db._contar(KeyConditionExpression="x"), 6000)
+        llamadas = tabla_falsa.query.call_args_list
+        self.assertEqual(len(llamadas), 3)
+        self.assertEqual(llamadas[2].kwargs["ExclusiveStartKey"], {"sk": "REQ#005000"})
+        self.assertTrue(all(c.kwargs["Select"] == "COUNT" for c in llamadas))
+
+
 class ConflictoTest(unittest.TestCase):
     def _error(self, codigo, motivos=None):
         error = Exception()

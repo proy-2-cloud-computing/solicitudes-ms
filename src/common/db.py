@@ -194,10 +194,27 @@ def obtener_historial(tenant_id, solicitud_id, limit=100, next_token=None):
     )
 
 
+def _contar(**kwargs):
+    """Query con Select=COUNT sumando TODAS las paginas.
+
+    DynamoDB tambien pagina los COUNT (1 MB evaluado por pagina): con 10,000
+    solicitudes por tenant una sola llamada devuelve solo ~2,500.
+    """
+    kwargs["Select"] = "COUNT"
+    total = 0
+    while True:
+        respuesta = tabla().query(**kwargs)
+        total += int(respuesta.get("Count", 0))
+        siguiente = respuesta.get("LastEvaluatedKey")
+        if not siguiente:
+            return total
+        kwargs["ExclusiveStartKey"] = siguiente
+
+
 def contar_por_estado(tenant_id):
     conteos = {}
     for estado in ESTADOS:
-        respuesta = tabla().query(
+        conteos[estado] = _contar(
             IndexName="GSI1",
             KeyConditionExpression=(
                 "tenant_id = :tenant AND begins_with(estado_fecha, :prefijo)"
@@ -206,18 +223,15 @@ def contar_por_estado(tenant_id):
                 ":tenant": tenant_id,
                 ":prefijo": f"{estado}#",
             },
-            Select="COUNT",
         )
-        conteos[estado] = int(respuesta.get("Count", 0))
 
-    respuesta_total = tabla().query(
+    total = _contar(
         KeyConditionExpression=(
             "tenant_id = :tenant AND begins_with(sk, :prefijo)"
         ),
         ExpressionAttributeValues={":tenant": tenant_id, ":prefijo": "REQ#"},
-        Select="COUNT",
     )
-    return int(respuesta_total.get("Count", 0)), conteos
+    return total, conteos
 
 
 # ---------------------------------------------------------------------------
