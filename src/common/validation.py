@@ -4,6 +4,7 @@ import base64
 import json
 import os
 import re
+from urllib.parse import unquote
 
 from .responses import ApiError
 
@@ -183,8 +184,21 @@ def validar_estado_filtro(valor):
 
 
 def normalizar_solicitud_id(valor):
-    """Acepta REQ#000870 o req%23000870 ya decodificado."""
-    texto = str(valor or "").strip().upper()
+    """Acepta REQ#000870, REQ%23000870 (sin decodificar) y REQ-000870.
+
+    API Gateway REST entrega pathParameters SIN decodificar: un GET a
+    /solicitudes/REQ%23000870 llega como "REQ%23000870". Se decodifica hasta
+    dos veces para tolerar doble codificacion (%2523).
+    """
+    texto = str(valor or "").strip()
+    for _ in range(2):
+        decodificado = unquote(texto)
+        if decodificado == texto:
+            break
+        texto = decodificado
+    texto = texto.upper()
+    if texto.startswith("REQ-"):
+        texto = "REQ#" + texto[4:]
     if not _ID_SOLICITUD.match(texto):
         raise ApiError(404, "NO_ENCONTRADO", "Solicitud no encontrada")
     return texto

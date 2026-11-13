@@ -23,7 +23,6 @@ from .validation import ESTADOS
 logger = logging.getLogger(__name__)
 
 _recurso = None
-_serializador = None
 
 
 # ---------------------------------------------------------------------------
@@ -46,30 +45,44 @@ def cliente():
     return _recurso_dynamo().meta.client
 
 
-def _serializador_dynamo():
-    global _serializador
-    if _serializador is None:
-        from boto3.dynamodb.types import TypeSerializer
-
-        _serializador = TypeSerializer()
-    return _serializador
-
-
 def _item_dynamo(item):
-    serializador = _serializador_dynamo()
-    return {
-        clave: serializador.serialize(valor)
-        for clave, valor in item.items()
-        if valor is not None
-    }
+    """Quita los None y deja los valores nativos de Python.
+
+    cliente() es resource.meta.client: boto3 ya serializa los tipos nativos
+    (tambien dentro de transact_write_items). Si se pasan valores ya
+    serializados con TypeSerializer ({"S": ...}) se serializan DOS veces,
+    tenant_id llega como mapa y DynamoDB cancela la transaccion.
+    """
+    return {clave: valor for clave, valor in item.items() if valor is not None}
+
+
+_MOTIVOS_CONFLICTO = {"ConditionalCheckFailed", "TransactionConflict"}
 
 
 def _es_conflicto(error):
-    codigo = getattr(error, "response", {}).get("Error", {}).get("Code", "")
-    return codigo in (
-        "TransactionCanceledException",
-        "ConditionalCheckFailedException",
+    """True solo si DynamoDB rechazo por condicion o concurrencia.
+
+    Una transaccion cancelada por otra causa (ValidationError, throttling...)
+    no es un conflicto del usuario: se registra el motivo y se propaga (500).
+    """
+    respuesta = getattr(error, "response", {}) or {}
+    codigo = respuesta.get("Error", {}).get("Code", "")
+    if codigo == "ConditionalCheckFailedException":
+        return True
+    if codigo != "TransactionCanceledException":
+        return False
+    motivos = [
+        motivo.get("Code")
+        for motivo in respuesta.get("CancellationReasons") or []
+        if motivo.get("Code") not in (None, "None")
+    ]
+    if motivos and set(motivos) <= _MOTIVOS_CONFLICTO:
+        return True
+    logger.error(
+        "Transaccion cancelada: %s",
+        respuesta.get("CancellationReasons") or respuesta.get("Error"),
     )
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -181,10 +194,27 @@ def obtener_historial(tenant_id, solicitud_id, limit=100, next_token=None):
     )
 
 
+def _contar(**kwargs):
+    """Query con Select=COUNT sumando TODAS las paginas.
+
+    DynamoDB tambien pagina los COUNT (1 MB evaluado por pagina): con 10,000
+    solicitudes por tenant una sola llamada devuelve solo ~2,500.
+    """
+    kwargs["Select"] = "COUNT"
+    total = 0
+    while True:
+        respuesta = tabla().query(**kwargs)
+        total += int(respuesta.get("Count", 0))
+        siguiente = respuesta.get("LastEvaluatedKey")
+        if not siguiente:
+            return total
+        kwargs["ExclusiveStartKey"] = siguiente
+
+
 def contar_por_estado(tenant_id):
     conteos = {}
     for estado in ESTADOS:
-        respuesta = tabla().query(
+        conteos[estado] = _contar(
             IndexName="GSI1",
             KeyConditionExpression=(
                 "tenant_id = :tenant AND begins_with(estado_fecha, :prefijo)"
@@ -193,18 +223,15 @@ def contar_por_estado(tenant_id):
                 ":tenant": tenant_id,
                 ":prefijo": f"{estado}#",
             },
-            Select="COUNT",
         )
-        conteos[estado] = int(respuesta.get("Count", 0))
 
-    respuesta_total = tabla().query(
+    total = _contar(
         KeyConditionExpression=(
             "tenant_id = :tenant AND begins_with(sk, :prefijo)"
         ),
         ExpressionAttributeValues={":tenant": tenant_id, ":prefijo": "REQ#"},
-        Select="COUNT",
     )
-    return int(respuesta_total.get("Count", 0)), conteos
+    return total, conteos
 
 
 # ---------------------------------------------------------------------------
@@ -248,25 +275,19 @@ def cambiar_estado(item, datos, actor_id):
         "fecha": ahora,
     }
 
-    serializador = _serializador_dynamo()
+    # Valores nativos: cliente() (resource.meta.client) ya los serializa.
     try:
         cliente().transact_write_items(
             TransactItems=[
                 {
                     "Update": {
                         "TableName": os.environ["TABLE"],
-                        "Key": {
-                            "tenant_id": serializador.serialize(tenant_id),
-                            "sk": serializador.serialize(solicitud_id),
-                        },
+                        "Key": {"tenant_id": tenant_id, "sk": solicitud_id},
                         "UpdateExpression": expresion,
                         "ConditionExpression": (
                             "attribute_exists(sk) AND estado = :anterior"
                         ),
-                        "ExpressionAttributeValues": {
-                            clave: serializador.serialize(valor)
-                            for clave, valor in valores.items()
-                        },
+                        "ExpressionAttributeValues": valores,
                     }
                 },
                 {

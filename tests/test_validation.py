@@ -107,7 +107,11 @@ class ValidacionTest(unittest.TestCase):
         self.assertEqual(
             normalizar_solicitud_id("req#000870"), "REQ#000870"
         )
-        for valor in (None, "", "REQ#", "000870", "SVC#000001"):
+        # API Gateway REST entrega el path parameter sin decodificar.
+        for valor in ("REQ%23000870", "req%23000870", "REQ%2523000870", "REQ-000870"):
+            with self.subTest(valor=valor):
+                self.assertEqual(normalizar_solicitud_id(valor), "REQ#000870")
+        for valor in (None, "", "REQ#", "000870", "SVC#000001", "SVC%23000001"):
             with self.subTest(valor=valor):
                 with self.assertRaises(ApiError) as error:
                     normalizar_solicitud_id(valor)

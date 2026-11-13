@@ -22,6 +22,20 @@ class ObtenerTest(unittest.TestCase):
         self.assertFalse(datos["sla_vencido"])
         consultar.assert_called_once_with("empresa-alfa", "REQ#000001")
 
+    def test_id_codificado_como_lo_entrega_api_gateway(self):
+        # GET /solicitudes/REQ%23000001 -> pathParameters.id = "REQ%23000001"
+        with mock.patch.object(
+            obtener.db,
+            "obtener_solicitud",
+            return_value=item_solicitud(),
+        ) as consultar:
+            respuesta = obtener.handler(
+                evento(path={"id": "REQ%23000001"}), None
+            )
+
+        self.assertEqual(respuesta["statusCode"], 200)
+        consultar.assert_called_once_with("empresa-alfa", "REQ#000001")
+
     def test_no_existe_o_es_de_otro_tenant(self):
         with mock.patch.object(
             obtener.db, "obtener_solicitud", return_value=None
