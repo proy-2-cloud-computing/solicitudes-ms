@@ -28,6 +28,10 @@
     {
       "key": "solicitudIdEnc",
       "value": "REQ%23000001"
+    },
+    {
+      "key": "uploadUrl",
+      "value": ""
     }
   ],
   "item": [
@@ -44,7 +48,8 @@
               "pm.test('trae tenant del token', () => pm.expect(data.tenant_id).to.be.a('string'));",
               "pm.test('calcula SLA', () => pm.expect(data.sla_vence_en).to.be.a('string'));",
               "pm.collectionVariables.set('solicitudId', data.solicitud_id);",
-              "pm.collectionVariables.set('solicitudIdEnc', encodeURIComponent(data.solicitud_id));"
+              "pm.collectionVariables.set('solicitudIdEnc', encodeURIComponent(data.solicitud_id));",
+              "pm.test('estado inicial correcto', () => pm.expect(data.estado).to.be.oneOf(['nueva','en_aprobacion']));"
             ]
           }
         }
@@ -64,7 +69,7 @@
         "url": "{{baseUrl}}/solicitudes",
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"servicio_id\": \"SVC#000001\",\n  \"titulo\": \"Acceso VPN para nuevo analista\",\n  \"descripcion\": \"Alta de acceso remoto\",\n  \"prioridad\": \"medio\"\n}"
+          "raw": "{\n  \"servicio_id\": \"SVC#000002\",\n  \"titulo\": \"Instalacion de software para nuevo analista\",\n  \"descripcion\": \"Alta de software aprobada por el area\",\n  \"prioridad\": \"medio\"\n}"
         }
       }
     },
@@ -239,7 +244,8 @@
               "pm.test('200', () => pm.response.to.have.status(200));",
               "const data = pm.response.json();",
               "pm.test('trae upload_url', () => pm.expect(data.upload_url).to.be.a('string'));",
-              "pm.collectionVariables.set('adjuntoKey', data.key);"
+              "pm.collectionVariables.set('adjuntoKey', data.key);",
+              "pm.collectionVariables.set('uploadUrl', data.upload_url);"
             ]
           }
         }
