@@ -26,6 +26,10 @@ def handler(event, context):
         ctx["tenant_id"],
     )
 
+    # El Catalogo acepta variantes (SVC-000003, svc#3) y devuelve el ID
+    # canonico (SVC#000003): se guarda ese para que la referencia coincida.
+    servicio_id = servicio.get("servicio_id") or datos["servicio_id"]
+
     creado_en = ahora_utc()
     estado = "en_aprobacion" if servicio["requiere_aprobacion"] else "nueva"
     solicitud_id = f"REQ#{db.nuevo_id_solicitud(ctx['tenant_id']):06d}"
@@ -33,7 +37,7 @@ def handler(event, context):
     item = {
         "tenant_id": ctx["tenant_id"],
         "sk": solicitud_id,
-        "servicio_id": datos["servicio_id"],
+        "servicio_id": servicio_id,
         "titulo": datos["titulo"],
         "descripcion": datos["descripcion"],
         "solicitante_id": ctx["usuario_id"],
@@ -71,7 +75,7 @@ def handler(event, context):
         estado,
         ctx["usuario_id"],
         datos={
-            "servicio_id": datos["servicio_id"],
+            "servicio_id": servicio_id,
             "nombre_servicio": servicio["nombre"],
             "sla_vence_en": item["sla_vence_en"],
             "prioridad": datos["prioridad"],

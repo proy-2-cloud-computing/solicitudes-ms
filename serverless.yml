@@ -20,11 +20,13 @@ provider:
     # Outputs de itsm-base (stack itsm-base-dev)
     TOPIC_ARN: ${cf:itsm-base-${self:provider.stage}.SolicitudesTopicArn}
     BUCKET: ${cf:itsm-base-${self:provider.stage}.AdjuntosBucketName}
-    # El Catalogo aun no existe. Para la demo local:
+    # URL del Catalogo tomada del Output del stack itsm-catalogo-<stage>
+    # (desplegar itsm-catalogo antes que este servicio). Para probar contra el
+    # mock local se puede forzar con:
     #   CATALOGO_URL=http://localhost:8000 npx serverless deploy
-    # Cuando exista itsm-catalogo-dev, cámbialo por:
-    #   ${cf:itsm-catalogo-${self:provider.stage}.ApiUrl}
-    CATALOGO_URL: ${env:CATALOGO_URL, 'http://localhost:8000'}
+    CATALOGO_URL: ${env:CATALOGO_URL, cf:itsm-catalogo-${self:provider.stage}.ApiUrl}
+    # 2 intentos x 5 s como maximo: la Lambda crear tiene timeout 15 s para
+    # alcanzar a responder 503 (y no morir con 502 por timeout).
     CATALOGO_TIMEOUT: '5'
     ADJUNTOS_EXPIRACION: '300'
     MAX_ADJUNTO_MB: '10'
@@ -48,6 +50,9 @@ functions:
   crear:
     handler: src/handlers/crear.handler
     description: Crea una solicitud consultando el Catalogo
+    # Consulta al Catalogo con hasta 2 intentos de 5 s: el default (6 s) no
+    # alcanza y API Gateway devolveria 502 en vez del 503 controlado.
+    timeout: 15
     events:
       - http:
           path: solicitudes
@@ -170,6 +175,27 @@ resources:
         Tags:
           - Key: Proyecto
             Value: ITSM-Grupo6
+
+    # CORS tambien en errores generados por API Gateway (401 del authorizer,
+    # 403 de ruta inexistente, 5xx): sin esto el navegador los muestra como
+    # error de CORS.
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseType: DEFAULT_4XX
+        RestApiId: !Ref ApiGatewayRestApi
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
+
+    GatewayResponseDefault5XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseType: DEFAULT_5XX
+        RestApiId: !Ref ApiGatewayRestApi
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,Authorization'"
 
   Outputs:
     ApiUrl:

@@ -77,6 +77,18 @@ class CrearTest(unittest.TestCase):
         mocks["publicar"].assert_called_once()
         self.assertEqual(mocks["publicar"].call_args[0][0], "solicitud-creada")
 
+    def test_guarda_el_id_canonico_del_catalogo(self):
+        body = {"servicio_id": "svc-000001", "titulo": "Acceso VPN para analista"}
+        respuesta, mocks = self._ejecutar(body=body)
+
+        self.assertEqual(respuesta["statusCode"], 201)
+        self.assertEqual(cuerpo(respuesta)["servicio_id"], "SVC#000001")
+        item, _ = mocks["guardar"].call_args[0]
+        self.assertEqual(item["servicio_id"], "SVC#000001")
+        self.assertEqual(
+            mocks["publicar"].call_args.kwargs["datos"]["servicio_id"], "SVC#000001"
+        )
+
     def test_sin_aprobacion_empieza_nueva(self):
         servicio = dict(SERVICIO, requiere_aprobacion=False)
         respuesta, mocks = self._ejecutar(servicio=servicio)
