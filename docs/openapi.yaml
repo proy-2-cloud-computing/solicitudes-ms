@@ -154,6 +154,37 @@ paths:
           $ref: '#/components/responses/Error'
 
   /solicitudes/{id}/adjuntos:
+    get:
+      tags: [Adjuntos]
+      summary: Listar adjuntos con URL prefirmada de descarga
+      parameters:
+        - $ref: '#/components/parameters/SolicitudId'
+      responses:
+        '200':
+          description: Adjuntos de la solicitud
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  solicitud_id:
+                    type: string
+                  expires_in:
+                    type: integer
+                  adjuntos:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        nombre:
+                          type: string
+                        download_url:
+                          type: string
+                          format: uri
+        '404':
+          $ref: '#/components/responses/Error'
     post:
       tags: [Adjuntos]
       summary: Firmar URL para subir un adjunto

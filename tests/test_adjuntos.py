@@ -170,6 +170,49 @@ class AdjuntosTest(unittest.TestCase):
         )
         self.assertEqual(respuesta["statusCode"], 405)
 
+    def test_listar_firma_descargas(self):
+        item = item_solicitud(
+            solicitante="u-9",
+            adjuntos=[
+                f"{PREFIJO}abc123-informe-final.pdf",
+                "empresa-beta/solicitudes/REQ-000001/zzz-ajeno.pdf",
+            ],
+        )
+        with mock.patch.object(
+            adjuntos.db, "obtener_solicitud", return_value=item
+        ), mock.patch.object(
+            adjuntos.storage,
+            "generar_url_descarga",
+            return_value="https://s3/download",
+        ) as firmar:
+            respuesta = adjuntos.handler(
+                evento(metodo="GET", path={"id": "REQ%23000001"}), None
+            )
+
+        self.assertEqual(respuesta["statusCode"], 200)
+        datos = cuerpo(respuesta)
+        self.assertEqual(datos["solicitud_id"], "REQ#000001")
+        self.assertEqual(
+            datos["adjuntos"],
+            [
+                {
+                    "key": f"{PREFIJO}abc123-informe-final.pdf",
+                    "nombre": "informe-final.pdf",
+                    "download_url": "https://s3/download",
+                }
+            ],
+        )
+        firmar.assert_called_once_with(f"{PREFIJO}abc123-informe-final.pdf", 300)
+
+    def test_listar_404_si_no_existe(self):
+        with mock.patch.object(
+            adjuntos.db, "obtener_solicitud", return_value=None
+        ):
+            respuesta = adjuntos.handler(
+                evento(metodo="GET", path={"id": "REQ#000001"}), None
+            )
+        self.assertEqual(respuesta["statusCode"], 404)
+
 
 if __name__ == "__main__":
     unittest.main()

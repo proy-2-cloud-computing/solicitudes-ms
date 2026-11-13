@@ -1,7 +1,8 @@
-"""POST /solicitudes/{id}/adjuntos y PUT .../adjuntos (confirmacion).
+"""Adjuntos de una solicitud en S3.
 
-POST firma una URL para que el navegador suba directo a S3.
-PUT confirma que el objeto existe y recien entonces lo guarda en `adjuntos`.
+POST /solicitudes/{id}/adjuntos  firma una URL para que el navegador suba directo a S3.
+PUT  /solicitudes/{id}/adjuntos  confirma que el objeto existe y lo guarda en `adjuntos`.
+GET  /solicitudes/{id}/adjuntos  lista los adjuntos con URL prefirmada de descarga.
 """
 
 import uuid
@@ -31,6 +32,8 @@ def handler(event, context):
         return _firmar(event, context)
     if metodo == "PUT":
         return _confirmar(event, context)
+    if metodo == "GET":
+        return _listar(event, context)
     raise ApiError(405, "METODO_NO_PERMITIDO", "Metodo no permitido")
 
 
@@ -93,6 +96,43 @@ def _confirmar(event, context):
         raise ApiError(404, "NO_ENCONTRADO", "Solicitud no encontrada")
 
     return ok(db.serializar_solicitud(actualizado))
+
+
+def _listar(event, context):
+    """Cualquier usuario del tenant que puede ver la solicitud puede abrir sus adjuntos."""
+    ctx = contexto(event)
+    solicitud_id = normalizar_solicitud_id(
+        (event.get("pathParameters") or {}).get("id")
+    )
+    item = db.obtener_solicitud(ctx["tenant_id"], solicitud_id)
+    if not item:
+        raise ApiError(404, "NO_ENCONTRADO", "Solicitud no encontrada")
+
+    prefijo = prefijo_adjuntos(ctx["tenant_id"], solicitud_id)
+    expiracion = expiracion_adjuntos()
+    adjuntos = [
+        {
+            "key": key,
+            "nombre": _nombre_visible(key),
+            "download_url": storage.generar_url_descarga(key, expiracion),
+        }
+        for key in item.get("adjuntos") or []
+        # Defensa extra: solo se firman keys de la carpeta de esta solicitud.
+        if str(key).startswith(prefijo) and ".." not in str(key)
+    ]
+    return ok(
+        {
+            "solicitud_id": item["sk"],
+            "adjuntos": adjuntos,
+            "expires_in": expiracion,
+        }
+    )
+
+
+def _nombre_visible(key):
+    """'<prefijo>/<hex>-informe.pdf' -> 'informe.pdf'."""
+    archivo = str(key).rsplit("/", 1)[-1]
+    return archivo.split("-", 1)[1] if "-" in archivo else archivo
 
 
 def _obtener_y_autorizar(ctx, solicitud_id):

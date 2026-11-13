@@ -1,4 +1,4 @@
-"""Cliente S3 para adjuntos (solo firma y verifica existencia)."""
+"""Cliente S3 para adjuntos (firma subidas y descargas, verifica existencia)."""
 
 import os
 
@@ -34,6 +34,14 @@ def generar_url_prefirmada(key, content_type, expiracion):
             "Key": key,
             "ContentType": content_type,
         },
+        ExpiresIn=int(expiracion),
+    )
+
+
+def generar_url_descarga(key, expiracion):
+    return _cliente().generate_presigned_url(
+        "get_object",
+        Params={"Bucket": bucket(), "Key": key},
         ExpiresIn=int(expiracion),
     )
 

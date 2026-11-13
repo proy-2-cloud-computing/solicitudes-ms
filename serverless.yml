@@ -100,7 +100,7 @@ functions:
 
   adjuntos:
     handler: src/handlers/adjuntos.handler
-    description: Firma URLs de S3 y confirma adjuntos
+    description: Firma URLs de S3 (subida y descarga) y confirma adjuntos
     events:
       - http:
           path: solicitudes/{id}/adjuntos
@@ -112,6 +112,13 @@ functions:
       - http:
           path: solicitudes/{id}/adjuntos
           method: put
+          cors: true
+          authorizer:
+            name: cognitoAuth
+            arn: ${cf:itsm-base-${self:provider.stage}.UserPoolArn}
+      - http:
+          path: solicitudes/{id}/adjuntos
+          method: get
           cors: true
           authorizer:
             name: cognitoAuth
